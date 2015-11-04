@@ -1,0 +1,4 @@
+# Python Package requirements
+
+requests
+beautifulsoup4
