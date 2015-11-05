@@ -9,8 +9,7 @@ __author__ = 'Petr'
 def download_page_content(url):
     try:
         r = requests.get(url)
-        text = r.text
-        text = str(text).encode('iso-8859-1')
+        text = bytes(r.text,  encoding='iso-8859-1')
         return text
     except Exception as e:
         print(e)
@@ -121,8 +120,9 @@ def analyze_one_ad(ad_html,verbose = False):
             print("Price: {}".format(pr))
         ad_json['price'] = pr
     except Exception as e:
-        print(e)
-        print("No price found")
+        if verbose:
+            print(e)
+            print("No price found")
 
     # Detect Image
     ad_json['img'] = None
@@ -147,9 +147,10 @@ def analyze_one_ad(ad_html,verbose = False):
                 print("\nLOKAILTA {}\n".format(x.text[22:]))
         # Detect link
         if "Link:" in x.text:
-            ad_json['link'] = x.a['href']
-            if verbose:
-                print("\nLink:|{}|".format(x.a['href']))
+            if not (x.a is None):
+                ad_json['link'] = x.a['href']
+                if verbose:
+                    print("\nLink:|{}|".format(x.a['href']))
 
     if verbose:
         print(json.dumps(ad_json, ensure_ascii=False))
@@ -172,9 +173,11 @@ def find_ads_on_page(url):
     return jsons
 
 
+
+
 if __name__ == "__main__":
     jsons = []
-    for x in range(90, 100, 10):
+    for x in range(2000, 5000, 10):
         jsons.append(find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x)))
 
     final_json = []
@@ -185,7 +188,5 @@ if __name__ == "__main__":
     db = {'db': {'table1': final_json}}
 
     import codecs
-
     with codecs.open('data.json', 'w', 'utf-8') as outfile:
-        print(json.dumps(db, ensure_ascii=False))
-        outfile.write(json.dumps(db, ensure_ascii=False).encode('windows-1250').decode())
+        outfile.write(json.dumps(db, ensure_ascii=False))
