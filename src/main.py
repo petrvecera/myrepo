@@ -3,8 +3,12 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import re
 import json
+import multiprocessing
+import codecs
 __author__ = 'Petr'
 
+global_data = None
+global_lock = None
 
 def download_page_content(url):
     try:
@@ -18,7 +22,7 @@ def download_page_content(url):
         return None
 
 
-def analyze_one_ad(ad_html,verbose = False):
+def analyze_one_ad(ad_html, verbose=False):
     if verbose:
         print("==================================================================")
     ad_json = {}
@@ -37,10 +41,10 @@ def analyze_one_ad(ad_html,verbose = False):
         return
 
     ad_json['type'] = None
-    ad_json['type'] = info[0]
+    ad_json['type'] = info[0].strip()
     ad_json['section'] = None
     ad_json['section'] = info[1]
-    ad_json['brand'] = info[2]
+    ad_json['brand'] = info[2].strip()
 
     if verbose:
         print("Type: {}, section: {}, brand: {}".format(info[0], info[1], info[2]))
@@ -64,7 +68,7 @@ def analyze_one_ad(ad_html,verbose = False):
 
     if verbose:
         print(divf.a.text)
-        print(divf.a['title']) ## CHECK WHAT THIS REALLY IS
+        print(divf.a['title'])  # CHECK WHAT THIS REALLY IS
 
     ad_json['user_name'] = divf.a['title']
     ad_json['user_id'] = None
@@ -92,7 +96,7 @@ def analyze_one_ad(ad_html,verbose = False):
 
     if len(tel) != 0:
         ad_json['tel'] = tel
-    ## WHAT TO DO IF TEL IS EMPTY
+    # WHAT TO DO IF TEL IS EMPTY
 
     # BODY INFO
     divc = ad_html.find("div", {"class": "list-ads-row-content"})
@@ -106,7 +110,7 @@ def analyze_one_ad(ad_html,verbose = False):
     ad_json['content'] = ad_content
     if verbose:
         print("AdContent: {}".format(ad_content))
-    ## If we detect that there is word "cely text inzeratu" we need to grab the ad from seprate page
+    # If we detect that there is word "cely text inzeratu" we need to grab the ad from seprate page
 
     ad_json['price'] = None
     try:
@@ -173,20 +177,57 @@ def find_ads_on_page(url):
     return jsons
 
 
+def thread(start, end, thread_number):
+    print("From:{} To:{}, Thread: {}".format(start, end, multiprocessing.current_process()))
+    jsons = []
+    for x in range(start, end, 10):
+        a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x))
+        if a is not None:
+            for y in list(a):
+                jsons.append(y)
+
+    # Lock is automatic
+    # while using
+    # data.append(jsons)
+    with codecs.open('data/data'+str(thread_number)+'.json', 'w', 'utf-8') as outfile:
+        outfile.write(json.dumps(jsons, ensure_ascii=False))
 
 
 if __name__ == "__main__":
     jsons = []
-    for x in range(2000, 5000, 10):
-        jsons.append(find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x)))
 
-    final_json = []
-    for x in jsons:
-        for y in x:
-            final_json.append(y)
+    #s = Array('c', 'hello world', lock=True)
+    # for x in range(2000, 2020, 10):
+    #     a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x))
+    #     if a is not None:
+    #         for y in list(a):
+    #             jsons.append(y)
+    #manager = multiprocessing.Manager()
+    #data = manager.list()
+    # data = multiprocessing.Manager().Value(list, 0, lock=True)
 
-    db = {'db': {'table1': final_json}}
+    t1 = multiprocessing.Process(target=thread, args=(0, 100, 1))
+    t1.start()
+    t2 = multiprocessing.Process(target=thread, args=(100, 200, 2))
+    t2.start()
+    t3 = multiprocessing.Process(target=thread, args=(200, 300, 3))
+    t3.start()
 
-    import codecs
-    with codecs.open('data.json', 'w', 'utf-8') as outfile:
-        outfile.write(json.dumps(db, ensure_ascii=False))
+    t1.join()
+    t2.join()
+    t3.join()
+
+
+
+
+    # final_json = []
+    # # for x in jsons:
+    # #     for y in x:
+    # #         final_json.append(y)
+    #
+    # [final_json.append(y) for y in x for x in jsons]
+
+    # db = {'db': {'table1': jsons}}
+    #
+    # with codecs.open('data2.json', 'w', 'utf-8') as outfile:
+    #     outfile.write(json.dumps(db, ensure_ascii=False))
