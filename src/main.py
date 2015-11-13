@@ -4,11 +4,10 @@ from datetime import datetime
 import re
 import json
 import multiprocessing
+import threading
 import codecs
 __author__ = 'Petr'
 
-global_data = None
-global_lock = None
 
 def download_page_content(url):
     try:
@@ -43,7 +42,7 @@ def analyze_one_ad(ad_html, verbose=False):
     ad_json['type'] = None
     ad_json['type'] = info[0].strip()
     ad_json['section'] = None
-    ad_json['section'] = info[1]
+    ad_json['section'] = info[1].strip()
     ad_json['brand'] = info[2].strip()
 
     if verbose:
@@ -96,16 +95,17 @@ def analyze_one_ad(ad_html, verbose=False):
 
     if len(tel) != 0:
         ad_json['tel'] = tel
-    # WHAT TO DO IF TEL IS EMPTY
+
 
     # BODY INFO
     divc = ad_html.find("div", {"class": "list-ads-row-content"})
     ad_name = divc.find("p", {"class": "list-ads-name"})
-    ad_json['ad_name'] = ad_name.text
+    ad_json['ad_name'] = ad_name.text.strip()
     if verbose:
         print("AdName: {}".format(ad_name.text))
     ad_content = divc.findAll('p')[1::2][0].text
-
+    # Remove \r from new lines
+    ad_content = ad_content.replace('\r', '')
     # TODO ADCONTENT
     ad_json['content'] = ad_content
     if verbose:
@@ -177,57 +177,59 @@ def find_ads_on_page(url):
     return jsons
 
 
-def thread(start, end, thread_number):
-    print("From:{} To:{}, Thread: {}".format(start, end, multiprocessing.current_process()))
-    jsons = []
-    for x in range(start, end, 10):
-        a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x))
-        if a is not None:
-            for y in list(a):
-                jsons.append(y)
+class DlThread(threading.Thread):
+    def __init__(self, start, end):
+        super(DlThread, self).__init__()
+        self.beginning = start
+        self.end = end
+        self.jsons = []
 
-    # Lock is automatic
-    # while using
-    # data.append(jsons)
-    with codecs.open('data/data'+str(thread_number)+'.json', 'w', 'utf-8') as outfile:
-        outfile.write(json.dumps(jsons, ensure_ascii=False))
+    def run(self):
+        print(threading.current_thread)
+        for x in range(self.beginning, self.end, 10):
+            a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from=" + str(x))
+            if a is not None:
+                for y in list(a):
+                    self.jsons.append(y)
 
 
 if __name__ == "__main__":
     jsons = []
 
-    #s = Array('c', 'hello world', lock=True)
-    # for x in range(2000, 2020, 10):
-    #     a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from="+str(x))
-    #     if a is not None:
-    #         for y in list(a):
-    #             jsons.append(y)
-    #manager = multiprocessing.Manager()
-    #data = manager.list()
-    # data = multiprocessing.Manager().Value(list, 0, lock=True)
+    # Settings
+    # There is 10 ads / 1 page
+    pages_per_thread = 50
+    ads_per_thread = pages_per_thread * 10
+    number_of_pages = 2000
+    # Number of pages / pages_per_thread should be integer number
 
-    t1 = multiprocessing.Process(target=thread, args=(0, 100, 1))
-    t1.start()
-    t2 = multiprocessing.Process(target=thread, args=(100, 200, 2))
-    t2.start()
-    t3 = multiprocessing.Process(target=thread, args=(200, 300, 3))
-    t3.start()
+    threads = []
 
-    t1.join()
-    t2.join()
-    t3.join()
+    for x in range(0, number_of_pages*10, ads_per_thread):
+        threads.append(DlThread(x, x+ads_per_thread))
 
+    for x in threads:
+        x.start()
 
+    for x in threads:
+        x.join()
 
+    for x in threads:
+        for y in x.jsons:
+            jsons.append(y)
 
-    # final_json = []
-    # # for x in jsons:
-    # #     for y in x:
-    # #         final_json.append(y)
+    found_adds = 0
+    final_json = []
+    for x in jsons:
+        for y in x:
+            found_adds += 1
+            final_json.append(y)
     #
     # [final_json.append(y) for y in x for x in jsons]
 
-    # db = {'db': {'table1': jsons}}
-    #
-    # with codecs.open('data2.json', 'w', 'utf-8') as outfile:
-    #     outfile.write(json.dumps(db, ensure_ascii=False))
+
+    print("Found ads: {}".format(found_adds/15))
+    db = {'db': {'table1': jsons}}
+
+    with codecs.open('data-13-11.json', 'w', 'utf-8') as outfile:
+        outfile.write(json.dumps(db, ensure_ascii=False))
