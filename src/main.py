@@ -6,12 +6,20 @@ import json
 import multiprocessing
 import threading
 import codecs
+import time
 __author__ = 'Petr'
 
 
-def download_page_content(url):
+
+def download_page_content(url, session):
     try:
-        r = requests.get(url)
+        start = time.time()
+        if session:
+            r = session.get(url)
+        else:
+            r = requests.get(url)
+        # elapsed_time = time.time() - start
+        # print("Request took: {0:3f}s".format(elapsed_time))
         text = bytes(r.text,  encoding='iso-8859-1')
         return text
     except Exception as e:
@@ -161,36 +169,37 @@ def analyze_one_ad(ad_html, verbose=False):
     return ad_json
 
 
-def find_ads_on_page(url):
-    page_content = download_page_content(url)
-
-    if not page_content:
-        return None
-
-    soup = BeautifulSoup(page_content, 'html.parser')
-    ads = soup.findAll("div", {"class": "list-ads-row"})
-    print("On page: {}, found: {} ads".format(url, len(ads)))
-    jsons = []
-
-    for x in ads:
-        jsons.append(analyze_one_ad(x, False))
-    return jsons
-
-
 class DlThread(threading.Thread):
-    def __init__(self, start, end):
+    def __init__(self, start, end, number):
         super(DlThread, self).__init__()
+        self.number = number
         self.beginning = start
         self.end = end
         self.jsons = []
+        self.s = requests.Session()
 
     def run(self):
-        print(threading.current_thread)
+        print("Thread: {} , {}".format(self.number, threading.current_thread))
         for x in range(self.beginning, self.end, 10):
-            a = find_ads_on_page("http://www.paladix.cz/bazar/index.php?from=" + str(x))
+            a = self.find_ads_on_page("http://www.paladix.cz/bazar/index.php?from=" + str(x), self.s)
             if a is not None:
                 for y in list(a):
                     self.jsons.append(y)
+
+    def find_ads_on_page(self, url, session=None):
+        page_content = download_page_content(url, session)
+
+        if not page_content:
+            return None
+
+        soup = BeautifulSoup(page_content, 'html.parser')
+        ads = soup.findAll("div", {"class": "list-ads-row"})
+        print("On page: {}, found: {} ads".format(url, len(ads)))
+        jsons = []
+
+        for x in ads:
+            jsons.append(analyze_one_ad(x, False))
+        return jsons
 
 
 if __name__ == "__main__":
@@ -198,15 +207,17 @@ if __name__ == "__main__":
 
     # Settings
     # There is 10 ads / 1 page
-    pages_per_thread = 50
+    pages_per_thread = 200
     ads_per_thread = pages_per_thread * 10
     number_of_pages = 2000
     # Number of pages / pages_per_thread should be integer number
 
     threads = []
 
+    cnt = 0
     for x in range(0, number_of_pages*10, ads_per_thread):
-        threads.append(DlThread(x, x+ads_per_thread))
+        threads.append(DlThread(x, x+ads_per_thread, cnt))
+        cnt += 1
 
     for x in threads:
         x.start()
@@ -227,9 +238,10 @@ if __name__ == "__main__":
     #
     # [final_json.append(y) for y in x for x in jsons]
 
-
     print("Found ads: {}".format(found_adds/15))
     db = {'db': {'table1': jsons}}
 
-    with codecs.open('data-13-11.json', 'w', 'utf-8') as outfile:
+    data_file = 'data-25-11.json'
+    print('Writing to: {}'.format(data_file))
+    with codecs.open(data_file, 'w', 'utf-8') as outfile:
         outfile.write(json.dumps(db, ensure_ascii=False))
